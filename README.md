@@ -1,1 +1,3 @@
 This is for my own purpose of coding again without any AI assistance trying to model generators and seeing how efficiency can be altered based on magnet polarity, spacing, and coil spacing. This is intentionally written as a dirty script and not meant to be close to production readiness ( Subject to change)
+
+See ![graph of voltage and rms vs num of magnets](graph.png) for the output. 
