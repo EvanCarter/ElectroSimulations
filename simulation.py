@@ -11,7 +11,14 @@ import math
 
 # magnet x position is relative to
 
-POINTS = 50000
+COIL_X_1 = 0.5
+COIL_WIDTH = 1
+COIL_X_2 = COIL_X_1 + COIL_WIDTH
+
+VELOCITY = 1
+
+
+POINTS = 10000
 RADIUS = 0.5
 MAGNET_DECAY_RADIUS_ON = False
 DECAY_TOLERANCE = 1.1
@@ -59,7 +66,7 @@ class Magnet:
     # and that the field is emitted straight out from every point on magnet
     polarity = 1
 
-    def __init__(self, inital_x=0, inital_y=0, polarity=1,  velocity=1):
+    def __init__(self, inital_x=0, inital_y=0, polarity=1, velocity=1):
         self._inital_x = inital_x
         self._initial_y = inital_y
         self.velocity = velocity
@@ -112,80 +119,134 @@ class Magnet:
         return flux / POINTS
 
 
-
 magnets: List[Magnet] = []
-myMag = Magnet()
-magnets.append(myMag)
-secondaryMag = Magnet(-1,0, -1, 1)
-magnets.append(secondaryMag)
 
 
-thirdMag = Magnet(-2,0, 1, 1)
-magnets.append(thirdMag)
+NUM_MAGNETS = 7
+MAGNET_SPACING_GAP = 0
+ALTERNATE_POLARITY = True
+START_POSITION = (0, 0)
+
+
+def magnet_factory():
+    for i in range(NUM_MAGNETS):
+        polarity = 1
+        if ALTERNATE_POLARITY:
+            polarity = (i % 2) * 2 - 1
+        x_displacement = i * ((RADIUS * 2) + MAGNET_SPACING_GAP)
+        mag = Magnet(
+            START_POSITION[0] - x_displacement, START_POSITION[1], polarity, VELOCITY
+        )
+
+        magnets.append(mag)
+
+
+magnet_factory()
 
 # right now let's assume there is some sort of coil from 1.5 to 2.5 and we want to calculate flux
 #  with a .1 step time increment
 # assume it's always in the y for now
-COIL_X_1 = .5
-COIL_X_2 = 2.5
 
-FINISH_LINE_X = 10
+
+FINISH_LINE_X = 8
 
 time_delta = 0.15
 current_t = 0
 STEPS = math.ceil(FINISH_LINE_X / time_delta)
+
+# MAGNETS X NUMBERS OF STEPS SIZE ARRAYS
+
 times = []
-voltages = []
-fluxes = []
+voltages = [[0 for _ in range(STEPS)] for _ in range(NUM_MAGNETS)]
+fluxes = [[0 for _ in range(STEPS)] for _ in range(NUM_MAGNETS)]
 
+print(len(voltages))
 
-last_flux = 0
-
-first = True
 
 for i in range(STEPS):
 
     current_flux = 0
-    for magnet in magnets:
+    # for magnet in magnets:
+
+    previous_flux = 0 
+    for k_prime in range(NUM_MAGNETS):
+        magnet = magnets[k_prime]
         current_flux += magnet.field_emitted(COIL_X_1, COIL_X_2, -100, 100, current_t)
 
-    if first:
-        last_flux = current_flux
-        first = False
-    current_voltage = (current_flux - last_flux) / time_delta
+        current_voltage = 0
+        if i > 0:
+            last_flux = fluxes[k_prime][i - 1]
+            current_voltage = (current_flux - last_flux) / time_delta
+        fluxes[k_prime][i] = current_flux
+        voltages[k_prime][i] = current_voltage
 
     # add vars:
     times.append(current_t)
-    fluxes.append(current_flux)
-    voltages.append(current_voltage)
 
     ## end of steps
-    last_flux = current_flux
     current_t += time_delta
 
 
-rms = 0 
-for volt in voltages:
-    rms = rms + volt**2
-
-rms =math.sqrt( rms / len(voltages))
-
-print("RMS IS:  ", rms)
-
-
-
+rms_container = []
+for w in range(NUM_MAGNETS):
+    rms = 0
+    for volt in voltages[w]:
+        rms = rms + volt**2
+    rms = math.sqrt(rms / len(voltages))
+    print("ITER: ", w, " RMS:  ", rms)
+    rms_container.append(rms)
 
 
-plt.subplot(2, 1, 1)  # 2 rows, 1 column, first plot
-plt.plot(times, fluxes)
+# number of magnets vs RMS voltage
+
+print( len(times))
+print(len(fluxes[-1]))
+
+
+
+plt.figure(figsize=(12, 8))  # Width, Height in inches
+plt.subplot(3, 1, 1)  # 2 rows, 1 column, first plot
+plt.plot(times, fluxes[-1])
 plt.ylabel("Flux")
 plt.title("Flux vs Time")
 
-plt.subplot(2, 1, 2)  # 2 rows, 1 column, second plot
-plt.plot(times, voltages)
+plt.subplot(3, 1, 2)  # 2 rows, 1 column, second plot
+plt.plot(times, voltages[-1])
 plt.xlabel("Time")
 plt.ylabel("Voltage")
 plt.title("Voltage vs Time")
 
-plt.tight_layout()  # Prevents labels from overlapping
+plt.subplot(3, 1, 3)
+plt.plot([*range(1,NUM_MAGNETS+1)], rms_container)
+plt.title("Magnets vs RMS Voltage")
+
+
+
+# Create parameter text
+param_text = (
+    f"Parameters:\n"
+    f"Coil Width: {COIL_WIDTH}\n"
+    f"Coil Position: [{COIL_X_1}, {COIL_X_2}]\n"
+    f"Magnets: {len(magnets)}\n"
+    f"Magnet Spacing: {MAGNET_SPACING_GAP}\n"
+    f"Velocity: {VELOCITY}\n"
+    f"Alternating Polarity: {ALTERNATE_POLARITY}\n"
+    f"Points: {POINTS}\n"
+    f"Radius: {RADIUS}\n"
+    f"Δt: {time_delta}\n"
+    f"RMS: {rms:.4f}V"
+)
+
+# # Adjust layout FIRST to make room
+plt.tight_layout(rect=[0, 0, 0.75, 1])  # [left, bottom, right, top]
+
+# Add text box to the right side AFTER adjusting layout
+plt.figtext(
+    0.78,
+    0.5,
+    param_text,
+    fontsize=10,
+    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    verticalalignment="center",
+)
 plt.show()
