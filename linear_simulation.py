@@ -6,10 +6,6 @@ import matplotlib.pyplot as plt
 import random
 import math
 
-# there is a magnet that is moving in the +x direction. and we are mapping it's field which
-# we assume is north.
-
-# magnet x position is relative to
 
 COIL_X_1 = 0.5
 COIL_WIDTH = 1
@@ -17,9 +13,8 @@ COIL_X_2 = COIL_X_1 + COIL_WIDTH
 
 VELOCITY = 1
 
-
 POINTS = 10000
-RADIUS = 0.5
+MAGNET_RADIUS = 0.5
 MAGNET_DECAY_RADIUS_ON = False
 DECAY_TOLERANCE = 1.1
 
@@ -29,7 +24,7 @@ def get_point(radius):
 
 
 def get_random_valid_points() -> tuple[int, int]:
-    radius = RADIUS
+    radius = MAGNET_RADIUS
 
     if MAGNET_DECAY_RADIUS_ON:
         random_x = get_point(DECAY_TOLERANCE * radius)
@@ -108,7 +103,7 @@ class Magnet:
                 # TODO DELETE BC THIS SHOULD BE PART OF THE MAGNET GRAPH NOT PART OF FIELD CALCULATION ON COIL
                 if MAGNET_DECAY_RADIUS_ON:
                     distance_from_edge = min(abs(current_x - x_1), abs(current_x - x_2))
-                    valid_external_mag_distance = RADIUS / 2
+                    valid_external_mag_distance = MAGNET_RADIUS / 2
                     if distance_from_edge < (valid_external_mag_distance):
                         # since we're less than valid mag distance this will always be less than 1
                         normalized_distance_away = (
@@ -133,7 +128,7 @@ def magnet_factory():
         polarity = 1
         if ALTERNATE_POLARITY:
             polarity = (i % 2) * 2 - 1
-        x_displacement = i * ((RADIUS * 2) + MAGNET_SPACING_GAP)
+        x_displacement = i * ((MAGNET_RADIUS * 2) + MAGNET_SPACING_GAP)
         mag = Magnet(
             START_POSITION[0] - x_displacement, START_POSITION[1], polarity, VELOCITY
         )
@@ -229,10 +224,10 @@ param_text = (
     f"Coil Position: [{COIL_X_1}, {COIL_X_2}]\n"
     f"Magnets: {len(magnets)}\n"
     f"Magnet Spacing: {MAGNET_SPACING_GAP}\n"
+    f"Magnet Radius: {MAGNET_RADIUS}\n"
     f"Velocity: {VELOCITY}\n"
     f"Alternating Polarity: {ALTERNATE_POLARITY}\n"
     f"Points: {POINTS}\n"
-    f"Radius: {RADIUS}\n"
     f"Δt: {time_delta}\n"
     f"RMS: {rms:.4f}V"
 )
