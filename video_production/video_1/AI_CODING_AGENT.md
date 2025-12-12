@@ -48,16 +48,31 @@ self.add_fixed_in_frame_mobjects(curve)
 **Result**: Vector-perfect, smooth lines that grow exactly with the simulation, with zero artifacts.
 
 ## 3. Physics & Math Precision
-### Exact Geometry
-- **Don't Fake It**: If the prompt asks for "Real Flux", calculate the actual area integrals (e.g., Area of Circle-Square Intersection).
-  - **Why?**: The visual derivative (Voltage) will only look "correct" (sharp transitions, flat tops) if the underlying Flux model is mathematically sound.
+### Exact Geometry (Integration Bounds)
+- **Math Precision**: When integrating intersection areas (e.g., Circle-Square), ensure integration bounds are shifted relative to the shape's center if the formula assumes `(0,0)`.
+  - Failure to do this results in incorrect "Bell Curve" shapes instead of "Flat Tops" for flux.
   
 ### Field Lines
 - **Direction & Orientation**: 
   - Magnet "North" face down $\rightarrow$ Field lines point **DOWN** (-Z).
   - Ensure arrows move *with* the object. Use `mob.add(arrows)` if the group moves together, or updaters if simpler.
 
+### Animation State (ValueTracker Lifecycle)
+- **CRITICAL**: Always explicitly add `self.add(value_tracker)` to the scene.
+- Without this, complex scenes (especially those with loops or multiple animations) may fail to update the tracker, resulting in static/frozen animations.
+
+### Layout (Split Screen)
+- **Separation**: To prevent 3D objects from clipping through 2D graphs, use a "Split Screen" approach.
+- Shift all 3D content (`DOWN*2`) and keep UI/Graphs fixed in the opposite corner (`UP*3` or `UL`).
+- This avoids the need for complex z-indexing or separate render passes.
+
 ## 4. Visual Polish (The "Wow" Factor)
 - **Backgrounds for UI**: Always put `BackgroundRectangle(opacity=0.8)` behind graphs when overlaying on 3D scenes to prevent line conflicts.
 - **Stroke Width**: Bold lines (4px+) read better on video than defaults.
 - **San-serif Fonts**: Use `Text` (Arial-like) for labels. Use `MathTex` only for equations.
+
+## 5. Agent Workflow & Verification
+- **Auto-Play Videos**: 
+  - After rendering any animation, **ALWAYS** run the `open` command on the output video file immediately.
+  - Do not wait for the user to ask "can you see it" or "play it".
+  - Command: `open /absolute/path/to/video.mp4`
