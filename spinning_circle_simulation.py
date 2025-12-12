@@ -270,23 +270,21 @@ for j in range(STEPS_PER_ROTATION):
 # plt.grid(True, alpha=0.3)
 
 # plt.show()
-fig, axs = plt.subplots(4, 1, figsize=(10, 10))
+fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
-for i in range(3):
-    axs[i].plot(coil_collection[i].voltages)
-    axs[i].set_title(f"Voltage Through Coil {i+1} Over One Rotation")
-    axs[i].set_xlabel("Step")
-    axs[i].set_ylabel("Voltage")
-    axs[i].grid(True, alpha=0.3)
+# Plot flux for coil 0
+axs[0].plot(coil_collection[0].fluxes)
+axs[0].set_title("Flux Through Coil 0 Over One Rotation")
+axs[0].set_xlabel("Step")
+axs[0].set_ylabel("Flux (Overlap Area)")
+axs[0].grid(True, alpha=0.3)
 
-# Plot sum of absolute voltages
-total_abs_voltage = [sum(abs(coil_collection[i].voltages[j]) for i in range(3)) for j in range(len(coil_collection[0].voltages))]
-
-axs[3].plot(total_abs_voltage)
-axs[3].set_title("Sum of Absolute Voltages From Coils 0-2")
-axs[3].set_xlabel("Step")
-axs[3].set_ylabel("Total Absolute Voltage")
-axs[3].grid(True, alpha=0.3)
+# Plot voltage for coil 0
+axs[1].plot(coil_collection[0].voltages)
+axs[1].set_title("Voltage Through Coil 0 Over One Rotation")
+axs[1].set_xlabel("Step")
+axs[1].set_ylabel("Voltage")
+axs[1].grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
