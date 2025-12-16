@@ -144,7 +144,7 @@ class LorentzForceWire(ThreeDScene):
         arrow_positions = [(-0.25, -0.15), (-0.25, 0.15), (0.25, -0.15), (0.25, 0.15), (0, 0)]
 
         for dx, dy in arrow_positions:
-            arrow = Arrow3D(
+            arrow = Line3D(
                 start=np.array([dx, dy, 0.6]),
                 end=np.array([dx, dy, -0.4]),
                 color=BLUE_C,
@@ -372,6 +372,19 @@ class LorentzForceWireSimple(ThreeDScene):
             n_label.move_to(magnet.get_center() + np.array([0, 0, -0.3]))
 
         magnet.add_updater(update_n_label)
+        # Field lines - Create them ONCE
+        for dx in [-0.2, 0.2]:
+            line = Line3D(
+                start=np.array([dx, 0, 0.8]),
+                end=np.array([dx, 0, -0.2]),
+                color=BLUE_C,
+                thickness=0.02
+            )
+            field_lines.add(line)
+        
+        # Initially move to magnet start pos
+        field_lines.move_to([-3, 0, 0.3]) # magnet is at [-3, 0, 1], mid Z is ~0.3 based on start/end
+        
         self.add(field_lines)
         self.wait(0.5)
 
@@ -390,17 +403,57 @@ class LorentzForceWireSimple(ThreeDScene):
         magnet.add_updater(update_magnet)
 
         def update_field(mob):
-            mob.remove(*mob.submobjects)
             mx = magnet_x.get_value()
+            # Just move the existing lines
+            # Lines were created relative to origin, we just shift them to x=mx
+            # But since they are in a VGroup 'field_lines', we can just move the group?
+            # Actually, let's just re-define positions relative to magnet_x
+            
+            # Better: We added them to field_lines. Let's just update their positions individually or as group.
+            # Simpler: The group effectively moves with the magnet.
+            
+            # Use relative positioning if they were attached to magnet, but here they are separate.
+            # We can just construct the positions manually like before but using set_start_and_end_attrs
+            # BUT Line3D is a Cylinder mesh, set_start_and_end might be tricky if not supported directly cleanly.
+            # Actually Line3D inherits from Cylinder. 
+            
+            # EASIEST PATTERN: Use simple translation
+            # 'field_lines' has 2 children.
+            # We calculated starts at dx,0,0.8.
+            # We want them at mx+dx, ...
+            
+            # Since we initialized them at x=0 (relative to group center?) 
+            # effectively just move the whole group to mx.
+            
+            # Calculating center of group:
+            # If we set them up at 0, moving to mx is easy.
+            
+            # Let's fix the initialization (Chunk 2) to be at origin, then move.
+            # Wait, Chunk 2 initialization:
+            # start=[dx, 0, 0.8] -> dx is -0.2 or 0.2. Center X is 0.
+            # so field_lines.move_to([mx, 0, ...]) works if we align correctly.
+            
+            # Actually, let's just update the individual lines.
+            children = mob.submobjects
+            for i, dx in enumerate([-0.2, 0.2]):
+                if i < len(children):
+                    line = children[i]
+                    # Direct mobject update is fast
+                    # Line3D is a Cylinder. It doesn't have put_start_and_end_on like Line.
+                    # It works by scaling and rotating a cylinder.
+                    # Re-instantiating Line3D IS safer for geometry if start/end change drastically, 
+                    # but here only translation changes.
+                    
+                    # So: Move the WHOLE GROUP.
+                    pass
+            
+            mob.move_to([mx, 0, 0.3]) # 0.3 is approx center of z=0.8 and z=-0.2
+            
+            # Toggle visibility based on range
             if abs(mx) < 2:
-                for dx in [-0.2, 0.2]:
-                    arrow = Arrow3D(
-                        start=np.array([mx + dx, 0, 0.8]),
-                        end=np.array([mx + dx, 0, -0.2]),
-                        color=BLUE_C,
-                        thickness=0.02
-                    )
-                    mob.add(arrow)
+                mob.set_opacity(1)
+            else:
+                mob.set_opacity(0)
 
         field_lines.add_updater(update_field)
 

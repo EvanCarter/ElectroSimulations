@@ -6,16 +6,16 @@ class MagnetCoil3D(ThreeDScene):
     def construct(self):
         # --- Config ---
         # 3D Camera
-        # User requested: more head on.
-        # phi 75 degrees (closer to ground), theta -90 (side profile)
-        self.set_camera_orientation(phi=75 * DEGREES, theta=-90 * DEGREES)
+        # User requested: y -4, x 0, z 4.
+        # This corresponds to phi ~ 45-50 degrees, theta = -90 degrees.
+        self.set_camera_orientation(phi=55 * DEGREES, theta=-90 * DEGREES)
         
         # Physics Parameters
-        MAGNET_RADIUS = 0.8  # Increased from 0.5
-        COIL_SIDE = MAGNET_RADIUS * 2.0  # Exact fit (1.6)
+        MAGNET_RADIUS = 0.5
+        COIL_SIDE = 1.0  # Square coil width = diameter of magnet
         MAGNET_SPEED = 2.0
-        X_START = -5.0       # Widened range
-        X_END = 5.0
+        X_START = -3.5
+        X_END = 3.5
         TOTAL_TIME = (X_END - X_START) / MAGNET_SPEED
         
         # --- Assets ---
@@ -62,7 +62,7 @@ class MagnetCoil3D(ThreeDScene):
         # Flux Graph
         axes_flux = Axes(
             x_range=[X_START, X_END, 1],
-            y_range=[-0.2, 2.5, 0.5], # Increased max y for larger area (PI*0.8^2 approx 2.0)
+            y_range=[-0.2, 1.2, 0.5], # Normalized Flux approx 0 to PI*r^2 approx 0.8
             x_length=4,
             y_length=2,
             axis_config={"include_tip": False, "font_size": 16},
@@ -78,7 +78,7 @@ class MagnetCoil3D(ThreeDScene):
         # V = - dPhi/dt
         axes_volt = Axes(
             x_range=[X_START, X_END, 1],
-            y_range=[-8, 8, 2], # Increased range for spikes
+            y_range=[-3, 3, 1], # Derivative can be sharp
             x_length=4,
             y_length=2,
             axis_config={"include_tip": False, "font_size": 16},
@@ -118,14 +118,14 @@ class MagnetCoil3D(ThreeDScene):
             if x_left >= x_right:
                 return 0.0
             
-            def indefinite_area_integral(u):
-                # Integral of 2 * sqrt(r^2 - u^2) du
-                # Clamp u to [-r, r]
-                u = np.clip(u, -r, r)
-                return u * np.sqrt(r**2 - u**2) + (r**2) * np.arcsin(u/r)
+            def indefinite_area_integral(x):
+                # Integral of 2 * sqrt(r^2 - u^2) du  (height of circle slice at u is 2y)
+                # = u * sqrt(r^2 - u^2) + r^2 * arcsin(u/r)
+                # Clamp x to [-r, r] to avoid domain errors
+                x_c = np.clip(x, -r, r)
+                return x_c * np.sqrt(r**2 - x_c**2) + (r**2) * np.arcsin(x_c/r)
 
-            # Shift bounds by cx to match circle-centered integration
-            return indefinite_area_integral(x_right - cx) - indefinite_area_integral(x_left - cx)
+            return indefinite_area_integral(x_right) - indefinite_area_integral(x_left)
 
         # Precompute Curves
         # We'll plot x from X_START to X_END
@@ -153,7 +153,6 @@ class MagnetCoil3D(ThreeDScene):
         # --- Animation Setup ---
         
         magnet_x = ValueTracker(X_START)
-        self.add(magnet_x)
         
         # Magnet Updater
         magnet_group.add_updater(lambda m: m.move_to(RIGHT * magnet_x.get_value() + OUT * 1.0))

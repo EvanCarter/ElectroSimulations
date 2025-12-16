@@ -1,28 +1,40 @@
 # AI Coding Agent Guide: High-Quality Manim Animations
 
-This guide outlines best practices for generating 3B1B-style educational animations, specifically focusing on physics simulations with 3D elements and synchronized data visualization.
+This guide outlines best practices for generating 3B1B-style educational animations, specifically focusing on physics simulations with 3D elements, synchronized data visualization, and performance optimization.
 
 ## 1. Scene Composition & Architecture
+
 ### Strategy: Integrated vs. Composited
 - **The "One Scene" Approach (Integrated)**: 
   - Best for: Synchronized demos where 3D motion *directly drives* 2D data (e.g., a magnet moving and drawing a graph).
   - **Technique**: Use `self.add_fixed_in_frame_mobjects(...)` for 2D UI/Graphs. This allows you to rotate the 3D camera without breaking the 2D overlay.
 - **The "Composited" Approach (Separated)**:
   - Best for: Complex 3D scenes where performance is low, or layout is tricky.
-  - **Technique**: Render the 3D Scene and 2D Graphs as *separate videos* or separate scenes, then combine them in a video editor (or a Manim `Group` scene, though that's complex).
-  - **Advice**: If the 2D graphs are just "data readouts", keeping them in the same scene is usually preferred for perfect synchronization. If they are complex mathematical derivations, separate them.
+  - **Technique**: Render the 3D Scene and 2D Graphs as *separate videos* or separate scenes, then combine them in a video editor.
+  - **Advice**: If the 2D graphs are just "data readouts", keeping them in the same scene is usually preferred for perfect synchronization.
 
-### 3D Camera Angles
-- **Avoid Defaults**: The default camera is often too meaningless.
-- **Head-On / Side Views**: For physics demos (like flux), a view that shows "depth" but preserves the "side profile" is best.
-  - **Recommended**: `phi=55*DEGREES` (tilted down), `theta=-90*DEGREES` (frontal/side).
-  - **Why?**: It maximizes information. Circles look like ellipses (showing disk shape), and displacement in depth is visible.
+### 3D Camera Angles: The "Head-On" Look
+- **Avoid Defaults**: Standard overhead views are often boring and lack depth.
+- **The "Immersive" View**:
+  - **Recommended**: `phi=75*DEGREES` (closer to the ground), `theta=-90*DEGREES` (frontal/side).
+  - **Why?**: This gives a sense of scale and depth, making the viewer feel like they are standing on the table watching the experiment. It maximizes information (circles look like ellipses, showing disk shape).
+
+### Layout: Split Screen
+- **The Rule**: **Never Overlap**. Do not let moving 3D objects pass behind or in front of 2D data plots.
+- **Implementation**:
+  - **Top Window (2D)**: Graphs, Flux meters, Labels. Pin to corners (e.g., `axes.to_corner(UL)`).
+  - **Bottom Window (3D)**: The physical apparatus (Magnet, Coil). Shift the entire 3D group down (e.g., `scene_group.shift(DOWN * 2.5)`).
+- **Visual Fidelity**:
+  - **Backgrounds**: Always put `BackgroundRectangle(opacity=0.8)` behind graphs if there is any chance of overlap.
+  - **Thick Lines**: Standard 1px lines are invisible on mobile. Use `stroke_width=4` minimum for graphs.
+  - **Glowing Objects**: For coils/wires, set `opacity=0.1` + `stroke_width=8` to look like glowing copper/neon.
 
 ## 2. Dynamic Graphing (The "Real Time" Look)
+
 ### The Golden Rule: "Pointwise Partial Updaters"
 **Do NOT use `TracedPath` or `always_redraw` for high-precision graphs.**
-- `TracedPath`: Creates jagged, low-res lines prone to "ghosting" artifacts.
-- `always_redraw`: Re-instantiates objects every frame, causing flickering and performance hits.
+- `TracedPath`: Creates jagged, low-res lines prone to "ghosting".
+- `always_redraw`: Performance heavy, causes flickering.
 
 ### The Correct Pattern
 1. **Pre-calculate** the *entire* curve (all points) at initialization using `axes.c2p`.
@@ -45,34 +57,60 @@ def update_curve(mob):
 curve.add_updater(update_curve)
 self.add_fixed_in_frame_mobjects(curve)
 ```
-**Result**: Vector-perfect, smooth lines that grow exactly with the simulation, with zero artifacts.
 
-## 3. Physics & Math Precision
-### Exact Geometry (Integration Bounds)
-- **Math Precision**: When integrating intersection areas (e.g., Circle-Square), ensure integration bounds are shifted relative to the shape's center if the formula assumes `(0,0)`.
-  - Failure to do this results in incorrect "Bell Curve" shapes instead of "Flat Tops" for flux.
-  
+## 3. Physics & Math Precision ("No Faking It")
+
+### Mathematical Integrity
+- **The "Flat Top" Standard**: 
+  - When a magnet moves through a coil, the Flux is constant (flat) while fully inside.
+  - **Common Bug**: Using a simple bell curve (Gaussian) is WRONG.
+  - **Technical Fix**: Calculate the exact **Circle-Square Intersection Area**.
+- **Integration Bounds**: ensure integration bounds are shifted relative to the shape's center `(x - cx)` if the formula assumes `(0,0)`.
+
+### Scale Matching
+- **Size Matters**: If Magnet Radius is 0.8, Coil Side Length should be at least 1.6 (2x Radius) to physically fit. Do not use default `Radius=0.5, Side=1.0` blindly.
+
 ### Field Lines
-- **Direction & Orientation**: 
-  - Magnet "North" face down $\rightarrow$ Field lines point **DOWN** (-Z).
-  - Ensure arrows move *with* the object. Use `mob.add(arrows)` if the group moves together, or updaters if simpler.
+- **Direction**: Magnet "North" face down $\rightarrow$ Field lines point **DOWN** (-Z).
+- **Motion**: Ensure arrows move *with* the object (add to group).
 
-### Animation State (ValueTracker Lifecycle)
-- **CRITICAL**: Always explicitly add `self.add(value_tracker)` to the scene.
-- Without this, complex scenes (especially those with loops or multiple animations) may fail to update the tracker, resulting in static/frozen animations.
+### Animation State
+- **Critical**: Always explicitly add `self.add(value_tracker)` to the scene. Updaters on "dangling" trackers may fail/garbage-collect.
 
-### Layout (Split Screen)
-- **Separation**: To prevent 3D objects from clipping through 2D graphs, use a "Split Screen" approach.
-- Shift all 3D content (`DOWN*2`) and keep UI/Graphs fixed in the opposite corner (`UP*3` or `UL`).
-- This avoids the need for complex z-indexing or separate render passes.
+## 4. Performance: "Keep Rendering Fast"
 
-## 4. Visual Polish (The "Wow" Factor)
-- **Backgrounds for UI**: Always put `BackgroundRectangle(opacity=0.8)` behind graphs when overlaying on 3D scenes to prevent line conflicts.
-- **Stroke Width**: Bold lines (4px+) read better on video than defaults.
-- **San-serif Fonts**: Use `Text` (Arial-like) for labels. Use `MathTex` only for equations.
+### The Speed Killers
+- **Arrow3D is SLOW**: Complex mesh geometry. 10+ arrows can tank render times.
+- **Too Many Sub-objects**: Loops creating dozens of 3D objects kill performance only if caching is ON.
 
-## 5. Agent Workflow & Verification
-- **Auto-Play Videos**: 
-  - After rendering any animation, **ALWAYS** run the `open` command on the output video file immediately.
-  - Do not wait for the user to ask "can you see it" or "play it".
+### The Speed Fixes
+1. **Use `Line3D` instead of `Arrow3D`**:
+   - `Line3D` is ~10x Faster. Cleaner for field visualizations.
+2. **Reduce Density**:
+   - Use minimum density needed (e.g. 2, 4, 8 lines instead of 20).
+3. **Disable Caching**:
+   - Always run with `--disable_caching`. 
+   - Caching often slows down scenes with many sub-objects.
+   - Command: `manim -ql --disable_caching scene.py SceneName`
+4. **Simplify Geometry**:
+   - Lower resolution for cylinders (`resolution=8`).
+   - Use flat shapes where depth isn't critical.
+
+### Performance Benchmark
+- **Bad**: 20 `Arrow3D` objects $\rightarrow$ ~8 minutes render time.
+- **Good**: 14 `Line3D` objects + `--disable_caching` $\rightarrow$ ~20 seconds render time.
+- **Result**: 24x speedup with minimal visual compromise.
+
+## 5. Visual Polish (The "Wow" Factor)
+- **Fonts**: Use `Text` (Arial-like) for labels. Use `MathTex` only for equations.
+- **Stroke Width**: Bold lines (4px+) for visibility.
+
+## 6. Agent Workflow & Verification
+
+### Feedback Loop
+- **Auto-Play**: After rendering, **ALWAYS** run the `open` command on the output video file immediately.
   - Command: `open /absolute/path/to/video.mp4`
+- **Iterate**:
+  1. **Low Qual (`-ql`)**: Check timing and motion.
+  2. **Physics Check**: Does graph match motion? (Derivative zero when flux constant?)
+  3. **High Qual**: Render final.
