@@ -16,4 +16,10 @@ Three phase model still was mainly handcrafted still but asked LLMs for some lon
 ![3 phases of ac power and joined voltage](3phasegenerator.png)
 
 
+-
+
+Created some animations under video_production folder and those are entirely vibe coded using manimCE edition. 
+Video1:
+https://www.youtube.com/watch?v=EKxgxxVeSd8
+
 
