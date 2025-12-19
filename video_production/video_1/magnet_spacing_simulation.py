@@ -45,17 +45,19 @@ def get_voltage(flux_func, t, dt=0.001):
 class MagnetSpacingSimulation(Scene):
     def construct(self):
         # --- Configuration ---
-        magnet_radius = 0.5
+        magnet_radius = 0.6
         magnet_diameter = 2 * magnet_radius 
         coil_width = magnet_diameter 
-        b_strength = 1.0 # North facing
+        b_strength = 6.5 # North facing
         
-        speed = 1.5 # units/sec
-        duration = 10.0 
+        speed = 2.0 # units/sec (Increased by ~33%)
+        duration = 6.0 
         
         # --- Visual Setup ---
         # Split Screen Layout (Restored)
-        phy_center = LEFT * 3.5
+        # --- Visual Setup ---
+        # Split Screen Layout (Restored)
+        phy_center = LEFT * 3.5 + DOWN * 1.5
         
         # Coil
         coil_visual = Rectangle(width=coil_width, height=2.0, color=WHITE, stroke_width=4).move_to(phy_center)
@@ -65,7 +67,7 @@ class MagnetSpacingSimulation(Scene):
         # Graphs (Right side)
         flux_axes = Axes(
             x_range=[0, duration, 1],
-            y_range=[0, 1.2, 0.5], 
+            y_range=[0, 8.0, 2.0], 
             x_length=5,
             y_length=2.5,
             axis_config={"include_tip": False}
@@ -74,7 +76,7 @@ class MagnetSpacingSimulation(Scene):
         
         volt_axes = Axes(
             x_range=[0, duration, 1], 
-            y_range=[-3, 3, 1],
+            y_range=[-20, 20, 5],
             x_length=5,
             y_length=2.5,
             axis_config={"include_tip": False}
@@ -83,37 +85,47 @@ class MagnetSpacingSimulation(Scene):
         
         self.add(flux_axes, flux_label, volt_axes, volt_label)
         
-         # Legend (initially empty, position will be set when items are added)
-        legend_group = VGroup() # Position handled in loop
-        
+        # Legend (initially empty)
+        legend_group = VGroup() 
+        # Fixed anchor point for the Top-Left of the legend. 
+        # Coil is at phy_center. Top of coil is roughly Y=1.
+        # We want legend near top of screen.
+        legend_start = phy_center + UP * 4.0 + LEFT * 0.5 
+
         def run_scenario(name, gap_ratio, color):
             # 1. Magnet Stream Setup
             gap_size = gap_ratio * magnet_diameter
             stride = magnet_diameter + gap_size
             
-            # Start logic:
-            # We want the 'Leading' Magnet (Magnet 0) to start just left of coil.
-            # Coil center: phy_center[0]
-            # Left edge coil: phy_center[0] - coil_width/2
-            # Magnet right edge: magnet_center + magnet_radius
-            # So: magnet_center + magnet_radius = phy_center[0] - coil_width/2 - epsilon
-            # magnet_center = phy_center[0] - coil_width/2 - magnet_radius - 0.2
-            
             start_x_leader_world = phy_center[0] - coil_width/2 - magnet_radius
             
-            # We need enough magnets behind it to fill `duration * speed` length.
-            # Distance needed = speed * duration = 18.0
-            # Num magnets = Distance / stride
-            num_magnets = int((speed * duration + 5.0) / stride) + 2
+            # Reverted: Dynamic count to fill duration
+            num_magnets_total = int((speed * duration + 5.0) / stride) + 2
             
             magnets = VGroup()
             magnet_offsets = [] # Relative to Leader
             
+            # Calculate Effective Count (magnets that enter coil)
+            # Coil Left Edge
+            coil_left_x = phy_center[0] - coil_width/2
+            effective_magnets_count = 0
+            
             # Create stream behind leader
-            for i in range(num_magnets):
+            for i in range(num_magnets_total):
                 off = -i * stride
                 magnet_offsets.append(off)
                 
+                # Check if it enters
+                # Start World X
+                s_x = start_x_leader_world + off
+                # Final World X
+                f_x = s_x + speed * duration
+                # Right edge at final
+                r_edge = f_x + magnet_radius
+                
+                if r_edge > coil_left_x:
+                    effective_magnets_count += 1
+
                 # Create visual
                 # World Pos = Start + Offset
                 m_pos = RIGHT * (start_x_leader_world + off) + UP * phy_center[1] # Align Y
@@ -123,18 +135,16 @@ class MagnetSpacingSimulation(Scene):
             
             self.add(magnets)
             
-            # Create initial legend entry (Simulation START info)
+            # Create initial legend entry
             l_dot = Square(side_length=0.2, color=color, fill_opacity=1)
-            # Just Name initially
-            l_txt_initial = Text(name, font_size=20, color=color)
+            # Include Magnet Count in label
+            l_txt_initial = Text(f"{name} (n={effective_magnets_count})", font_size=20, color=color)
             l_entry = VGroup(l_dot, l_txt_initial).arrange(RIGHT, buff=0.2)
             legend_group.add(l_entry)
             legend_group.arrange(DOWN, aligned_edge=LEFT)
             
-            # FIX: Robust Positioning
-            # Ensure it is always above the coil, regardless of content size
-            legend_group.next_to(coil_visual, UP, buff=0.8)
-            print(f"DEBUG: Legend Center: {legend_group.get_center()}")
+            # FIX: Anchored Top-Left to prevent jitter
+            legend_group.move_to(legend_start, aligned_edge=UL)
             
             self.add(l_entry)
             
@@ -262,22 +272,22 @@ class MagnetSpacingSimulation(Scene):
             
             # UPDATE Legend with RMS
             # Create the final version
-            l_txt_final = Text(rms_str, font_size=20, color=color)
+            final_str = f"{rms_str} (n={effective_magnets_count})"
+            l_txt_final = Text(final_str, font_size=20, color=color)
             l_entry_final = VGroup(l_dot.copy(), l_txt_final).arrange(RIGHT, buff=0.2).move_to(l_entry.get_center(), aligned_edge=LEFT)
             
             # Swap them
             self.play(ReplacementTransform(l_entry, l_entry_final))
             
-            # Since l_entry is in VGroup, we might need to be careful about updating the reference in the group
-            # But visually replacing it is enough. To keep the group valid for layout next time:
             legend_group.remove(l_entry)
             legend_group.add(l_entry_final)
             legend_group.arrange(DOWN, aligned_edge=LEFT)
-            # Re-apply position just in case size changed
-            legend_group.next_to(coil_visual, UP, buff=0.8)
+            # Re-apply fixed anchor
+            legend_group.move_to(legend_start, aligned_edge=UL)
             
             
         # Run Scenarios
+        run_scenario("Gap 1.8x", 1.8, YELLOW)
         run_scenario("Gap 1.0x", 1.0, BLUE)
         run_scenario("Gap 0.5x", 0.5, GREEN)
         run_scenario("Gap 0.0x", 0.0, RED)

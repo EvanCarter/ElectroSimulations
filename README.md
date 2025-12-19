@@ -14,3 +14,6 @@ Three phase model still was mainly handcrafted still but asked LLMs for some lon
 ![magnets and coils graph](magnet_disk.png) Magnets are the red and blue ( representing polarity) and the golden broken circles represent coils and the resulting graph of the generated voltage:
 
 ![3 phases of ac power and joined voltage](3phasegenerator.png)
+
+
+

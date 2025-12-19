@@ -39,7 +39,7 @@ class BallHillScene(Scene):
             color=WHITE
         ))
         
-        hill_label = Text("Height", font_size=24, color=WHITE).next_to(hill_axes, UP).shift(LEFT)
+        hill_label = Text("Hill", font_size=24, color=WHITE).next_to(hill_axes, UP).shift(LEFT)
 
         ball = Dot(color=BLUE, radius=0.15) # Default color, will change
         # We will manually move the ball during animations, initially place it at start
@@ -55,7 +55,7 @@ class BallHillScene(Scene):
             axis_config={"include_tip": False}
         ).to_edge(RIGHT, buff=0.5).to_edge(UP, buff=1.0) # Increased top buffer to prevent cutoff
         
-        pos_label = Text("Position", font_size=24).next_to(pos_axes, UP)
+        pos_label = Text("Height", font_size=24).next_to(pos_axes, UP)
         pos_x_label = Text("Time", font_size=16).next_to(pos_axes, DOWN).shift(RIGHT * 2)
         
         vel_axes = Axes(
