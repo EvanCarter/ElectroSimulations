@@ -1,4 +1,8 @@
 venv/
 media/
 __pycache__/
-video_production/video_rough_draft.md
+# video_production/video_rough_draft.md
+
+video_production/video_2/video_2_media/
+
+.DS_Store

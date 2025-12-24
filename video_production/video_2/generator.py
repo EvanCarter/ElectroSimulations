@@ -53,6 +53,7 @@ def calculate_physics_data(
     total_time=8.0,
     magnet_path_radius=2.5,
     magnet_radius=0.5,
+    coil_theta=math.pi / 2.0,
 ):
     # Physics Constants
     magnet_diameter_physics = magnet_radius * 2
@@ -75,8 +76,8 @@ def calculate_physics_data(
         magnet_angles.append(theta)
         magnet_polarities.append(i % 2 == 0)
 
-    # Target Coil: Top Coil at PI/2
-    coil_theta = math.pi / 2.0
+    # Target Coil: Default is Top Coil at PI/2
+    # coil_theta is now passed in
 
     # Simulation Loop
     for step in range(steps):
@@ -184,11 +185,6 @@ def build_rotor(num_magnets, magnet_path_radius, magnet_radius, disk_radius):
 
     rotor_group.add(magnets)
     return rotor_group
-
-
-def get_coil_indicator(coil, color=YELLOW):
-    indicator = SurroundingRectangle(coil, color=color, buff=0.1, stroke_width=4)
-    return indicator
 
 
 class SpinningGenerator(Scene):
@@ -425,11 +421,6 @@ class SpinningGenerator(Scene):
         # Group for animation
         graphs_dynamic = VGroup(flux_curve, voltage_curve, flux_dot, voltage_dot)
 
-        # --- ADD TO SCENE ---
-        # Add indicator for Coil 0
-        coil_0_indicator = get_coil_indicator(coils[0])
-        visual_group_start = VGroup(generator_system, coil_0_indicator)
-
         self.add(visual_group_start)
 
         self.wait(1)
@@ -463,12 +454,9 @@ class SpinningGenerator(Scene):
             NUM_MAGNETS_END, MAGNET_PATH_RADIUS, MAGNET_RADIUS, DISK_RADIUS
         )
 
-        # Create new indicator
-        coil_0_indicator_new = get_coil_indicator(coils_new[0])
-
         # Position them to match current generator state
         # Fix: changing positioning to match CENTER instead of re-calculating edge
-        new_system = VGroup(coils_new, rotor_new, coil_0_indicator_new).scale(0.7)
+        new_system = VGroup(coils_new, rotor_new).scale(0.7)
         new_system.move_to(visual_group_start.get_center())
 
         # Important: Match rotation of the OLD rotor visual?
