@@ -14,8 +14,15 @@ def get_area_between_circle(theta_dist, orbit_radius, r) -> float:
         return 0
     if d == 0:
         return math.pi * (r**2)
-    term1 = 2 * (r**2) * math.acos(d / (2 * r))
-    term2 = 0.5 * d * math.sqrt(4 * (r**2) - d**2)
+    
+    # Clamp to avoid domain error for floating point issues
+    arg = d / (2 * r)
+    arg = max(-1.0, min(1.0, arg))
+    
+    term1 = 2 * (r**2) * math.acos(arg)
+    val_for_sqrt = 4 * (r**2) - d**2
+    val_for_sqrt = max(0, val_for_sqrt)
+    term2 = 0.5 * d * math.sqrt(val_for_sqrt)
     return term1 - term2
 
 
