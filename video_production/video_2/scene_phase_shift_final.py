@@ -586,7 +586,7 @@ class PhaseShiftScene4Mag(Scene):
         # Run the full simulation
         self.play(
             time_tracker.animate.set_value(SIMULATION_TIME),
-            run_time=SIMULATION_TIME,  # Real-time for iteration (slow down later)
+            run_time=30.0,  # Slow-mo: 4s physics stretched to 30s real-time
             rate_func=linear
         )
 

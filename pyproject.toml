@@ -5,10 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 
-[tool.uv.scripts]
-viz = "manim -pql"
-render = "manim -pqk"
-
 
 dependencies = [
     "audioop-lts==0.2.2",
