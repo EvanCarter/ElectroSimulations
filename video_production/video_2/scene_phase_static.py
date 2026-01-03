@@ -1,10 +1,7 @@
 from manim import *
-from generator import (
-    build_rotor,
-    get_theta_distance,
-    get_area_between_circle
-)
+from generator import build_rotor, calculate_sine_voltage_trace
 import math
+import numpy as np
 from dataclasses import dataclass
 from typing import Callable
 
@@ -51,83 +48,27 @@ class PhaseStaticScene(Scene):
         ]
 
         # ============================================================
-        # MAGNET SETUP
+        # PHYSICS CALCULATION (FINAL Sinusoidal Model)
         # ============================================================
-        magnet_angles_start = []
-        magnet_polarities = []
-        for i in range(NUM_MAGNETS):
-            theta = (math.pi / 2.0) - (i * (2 * math.pi / NUM_MAGNETS))
-            magnet_angles_start.append(theta)
-            magnet_polarities.append(i % 2 == 0)
-
-        # ============================================================
-        # PHYSICS CALCULATION
-        # ============================================================
-        def calculate_flux_at_instant(t: float, coil_angle: float) -> float:
-            angle_delta = -ROTATION_SPEED * t
-
-            total_flux = 0.0
-            for i, start_angle in enumerate(magnet_angles_start):
-                current_mag_angle = (start_angle + angle_delta) % (2 * PI)
-                dist = get_theta_distance(coil_angle, current_mag_angle)
-                area = get_area_between_circle(dist, MAGNET_PATH_RADIUS, MAGNET_RADIUS)
-
-                if magnet_polarities[i]:
-                    total_flux += area
-                else:
-                    total_flux -= area
-
-            return total_flux
-
         print(f"Static Phase: Calculating physics for {len(coils_config)} coil(s)...")
-
-        from scipy.ndimage import gaussian_filter1d
-        import numpy as np
-
-        lookup_steps = 50000
-        flux_lookup = []
-
-        for i in range(lookup_steps):
-            t_lookup = (i / lookup_steps) * (2 * PI / ROTATION_SPEED)
-            flux = calculate_flux_at_instant(t_lookup, PI / 2.0)
-            flux_lookup.append(flux)
-
-        flux_lookup_smoothed = gaussian_filter1d(flux_lookup, sigma=100, mode='wrap')
-
-        def get_smoothed_flux_at_angle(t, coil_angle):
-            effective_time = t - (PI/2 - coil_angle) / ROTATION_SPEED
-            phase = (effective_time * ROTATION_SPEED) % (2 * PI)
-
-            fractional_idx = (phase / (2 * PI)) * lookup_steps
-            idx_low = int(fractional_idx) % lookup_steps
-            idx_high = (idx_low + 1) % lookup_steps
-            alpha = fractional_idx - int(fractional_idx)
-
-            flux_low = flux_lookup_smoothed[idx_low]
-            flux_high = flux_lookup_smoothed[idx_high]
-            return flux_low + alpha * (flux_high - flux_low)
 
         coil_data = {}
 
         for coil_cfg in coils_config:
-            voltage_trace = []
             # Fixed coil angle
-            coil_angle = (PI / 2.0) - coil_cfg.position_angle
+            coil_angle_static = (PI / 2.0) - coil_cfg.position_angle
 
-            for step in range(PHYSICS_STEPS):
-                t = step * dt
-
-                if step > 0:
-                    flux_now = get_smoothed_flux_at_angle(t, coil_angle)
-                    flux_prev = get_smoothed_flux_at_angle(t - dt, coil_angle)
-                    voltage = (flux_now - flux_prev) / dt
-                else:
-                    voltage = 0.0
-
-                voltage_trace.append((t, voltage))
+            voltage_trace = calculate_sine_voltage_trace(
+                num_magnets=NUM_MAGNETS,
+                rotation_speed=ROTATION_SPEED,
+                total_time=SIMULATION_TIME,
+                coil_angle_static=coil_angle_static,
+                amplitude=10.0,
+                steps=PHYSICS_STEPS,
+            )
 
             coil_data[coil_cfg.name] = voltage_trace
-            print(f"  Coil {coil_cfg.name} at {coil_cfg.position_angle/DEGREES:.0f} deg: {len(voltage_trace)} points")
+            print(f"  Coil {coil_cfg.name} at {coil_cfg.position_angle/DEGREES:.0f}°: {len(voltage_trace)} points")
 
         max_voltage = 0.0
         for trace in coil_data.values():
@@ -271,207 +212,14 @@ class PhaseStaticScene(Scene):
         self.wait(2)
 
 
-class PhaseShiftRevealScene(Scene):
-    """
-    All three waveforms start overlapped, then B and C slide horizontally
-    to reveal the phase shift as a time delay.
-    """
-
-    def construct(self):
-        # ============================================================
-        # PHYSICAL CONSTANTS
-        # ============================================================
-        DISK_RADIUS = 3.0
-        MAGNET_RADIUS = 0.8
-        OFFSET_FROM_EDGE = 0.2
-        MAGNET_PATH_RADIUS = DISK_RADIUS - OFFSET_FROM_EDGE - MAGNET_RADIUS
-        NUM_MAGNETS = 2
-        ROTATION_SPEED = 0.5 * PI
-
-        # ============================================================
-        # TIME PARAMETERS
-        # ============================================================
-        SIMULATION_TIME = 5.0  # Show ~1.25 rotations
-        PHYSICS_STEPS = 3000
-        dt = SIMULATION_TIME / PHYSICS_STEPS
-
-        # Period of one cycle
-        PERIOD = (2 * PI) / ROTATION_SPEED  # Time for one full rotation
-
-        # Phase shifts in time units
-        PHASE_SHIFT_B = (120 * DEGREES) / ROTATION_SPEED  # 120° worth of time
-        PHASE_SHIFT_C = (240 * DEGREES) / ROTATION_SPEED  # 240° worth of time
-
-        # ============================================================
-        # COIL CONFIG (all at same position for base waveform)
-        # ============================================================
-        coils_config = [
-            {"name": "A", "color": BLUE, "shift": 0},
-            {"name": "B", "color": ORANGE, "shift": PHASE_SHIFT_B},
-            {"name": "C", "color": GREEN, "shift": PHASE_SHIFT_C},
-        ]
-
-        # ============================================================
-        # MAGNET SETUP
-        # ============================================================
-        magnet_angles_start = []
-        magnet_polarities = []
-        for i in range(NUM_MAGNETS):
-            theta = (math.pi / 2.0) - (i * (2 * math.pi / NUM_MAGNETS))
-            magnet_angles_start.append(theta)
-            magnet_polarities.append(i % 2 == 0)
-
-        # ============================================================
-        # PHYSICS - Generate base waveform (coil at 12 o'clock)
-        # ============================================================
-        def calculate_flux_at_instant(t: float, coil_angle: float) -> float:
-            angle_delta = -ROTATION_SPEED * t
-            total_flux = 0.0
-            for i, start_angle in enumerate(magnet_angles_start):
-                current_mag_angle = (start_angle + angle_delta) % (2 * PI)
-                dist = get_theta_distance(coil_angle, current_mag_angle)
-                area = get_area_between_circle(dist, MAGNET_PATH_RADIUS, MAGNET_RADIUS)
-                if magnet_polarities[i]:
-                    total_flux += area
-                else:
-                    total_flux -= area
-            return total_flux
-
-        print("PhaseShiftReveal: Calculating base waveform...")
-
-        from scipy.ndimage import gaussian_filter1d
-        import numpy as np
-
-        lookup_steps = 50000
-        flux_lookup = []
-        for i in range(lookup_steps):
-            t_lookup = (i / lookup_steps) * (2 * PI / ROTATION_SPEED)
-            flux = calculate_flux_at_instant(t_lookup, PI / 2.0)
-            flux_lookup.append(flux)
-
-        flux_lookup_smoothed = gaussian_filter1d(flux_lookup, sigma=100, mode='wrap')
-
-        def get_smoothed_flux_at_angle(t, coil_angle):
-            effective_time = t - (PI/2 - coil_angle) / ROTATION_SPEED
-            phase = (effective_time * ROTATION_SPEED) % (2 * PI)
-            fractional_idx = (phase / (2 * PI)) * lookup_steps
-            idx_low = int(fractional_idx) % lookup_steps
-            idx_high = (idx_low + 1) % lookup_steps
-            alpha = fractional_idx - int(fractional_idx)
-            return flux_lookup_smoothed[idx_low] + alpha * (flux_lookup_smoothed[idx_high] - flux_lookup_smoothed[idx_low])
-
-        # Generate voltage trace for coil at 12 o'clock
-        base_voltage_trace = []
-        coil_angle = PI / 2.0
-
-        for step in range(PHYSICS_STEPS):
-            t = step * dt
-            if step > 0:
-                flux_now = get_smoothed_flux_at_angle(t, coil_angle)
-                flux_prev = get_smoothed_flux_at_angle(t - dt, coil_angle)
-                voltage = (flux_now - flux_prev) / dt
-            else:
-                voltage = 0.0
-            base_voltage_trace.append((t, voltage))
-
-        max_voltage = max(abs(v) for _, v in base_voltage_trace) * 1.1
-
-        print(f"  Generated {len(base_voltage_trace)} points, max_voltage={max_voltage:.2f}")
-
-        # ============================================================
-        # VISUAL ELEMENTS
-        # ============================================================
-
-        # --- GRAPH ---
-        ax = Axes(
-            x_range=[0, SIMULATION_TIME, 1],
-            y_range=[-max_voltage, max_voltage, max_voltage / 2],
-            x_length=11,
-            y_length=5,
-            axis_config={"include_tip": False, "color": GREY},
-        )
-
-        title = Text("Phase Shift = Horizontal Time Delay", font_size=32)
-        title.next_to(ax, UP, buff=0.3)
-
-        graph_group = VGroup(ax, title)
-        graph_group.center()
-
-        # --- PRE-BUILT FULL CURVES ---
-        # Build complete curves for each coil (all same shape, will shift B and C)
-        def build_curve_points(time_offset=0):
-            points = []
-            for t_val, v_val in base_voltage_trace:
-                x = t_val + time_offset
-                if 0 <= x <= SIMULATION_TIME:
-                    points.append(ax.c2p(x, v_val))
-            return points
-
-        # Create curves - all start at same position (no offset)
-        curve_a = VMobject().set_color(BLUE).set_stroke(width=3)
-        curve_b = VMobject().set_color(ORANGE).set_stroke(width=3)
-        curve_c = VMobject().set_color(GREEN).set_stroke(width=3)
-
-        # Initial points (all same)
-        points_a = build_curve_points(0)
-        curve_a.set_points_as_corners(points_a)
-        curve_b.set_points_as_corners(points_a.copy())
-        curve_c.set_points_as_corners(points_a.copy())
-
-        curves = VGroup(curve_a, curve_b, curve_c)
-
-        # --- LEGEND ---
-        legend = VGroup(
-            VGroup(Line(LEFT * 0.3, RIGHT * 0.3, color=BLUE, stroke_width=3), Text("A (0°)", font_size=20, color=BLUE)).arrange(RIGHT, buff=0.1),
-            VGroup(Line(LEFT * 0.3, RIGHT * 0.3, color=ORANGE, stroke_width=3), Text("B (120°)", font_size=20, color=ORANGE)).arrange(RIGHT, buff=0.1),
-            VGroup(Line(LEFT * 0.3, RIGHT * 0.3, color=GREEN, stroke_width=3), Text("C (240°)", font_size=20, color=GREEN)).arrange(RIGHT, buff=0.1),
-        ).arrange(RIGHT, buff=0.8)
-        legend.next_to(ax, DOWN, buff=0.3)
-
-        # ============================================================
-        # ANIMATION
-        # ============================================================
-
-        self.add(graph_group, legend)
-
-        # Draw curves appearing (all overlapped)
-        self.play(Create(curve_a), run_time=1.5)
-        self.play(Create(curve_b), Create(curve_c), run_time=0.5)
-
-        self.wait(0.5)
-
-        # Show "all same" label
-        same_label = Text("All three coils: same waveform", font_size=24)
-        same_label.next_to(ax, DOWN, buff=1.2)
-        self.play(FadeIn(same_label))
-        self.wait(1)
-
-        # Now shift B and C horizontally
-        shift_label = Text("Shifting by phase angle...", font_size=24)
-        shift_label.move_to(same_label)
-        self.play(FadeOut(same_label), FadeIn(shift_label))
-
-        # Calculate pixel shift for B and C
-        # shift in x-axis units = time shift
-        x_shift_b = ax.c2p(PHASE_SHIFT_B, 0)[0] - ax.c2p(0, 0)[0]
-        x_shift_c = ax.c2p(PHASE_SHIFT_C, 0)[0] - ax.c2p(0, 0)[0]
-
-        self.play(
-            curve_b.animate.shift(RIGHT * x_shift_b),
-            curve_c.animate.shift(RIGHT * x_shift_c),
-            run_time=2,
-            rate_func=smooth
-        )
-
-        self.play(FadeOut(shift_label))
-        self.wait(2)
-
-
 class TwoPhaseVsSplitPhaseScene(Scene):
     """
     Side-by-side comparison of two-phase (90° offset) vs split-phase (180° offset).
-    Generator on left with coils visible, two pre-drawn graphs stacked on right.
-    Only the rotor animates.
+    Two generators stacked on the left:
+      - Top: Two-phase (coils at 12 o'clock and 3 o'clock)
+      - Bottom: Split-phase (coils at 12 o'clock and 6 o'clock)
+    Two pre-drawn graphs stacked on the right showing waveform differences.
+    Both rotors animate in sync.
     """
 
     def construct(self):
@@ -493,69 +241,6 @@ class TwoPhaseVsSplitPhaseScene(Scene):
         dt = SIMULATION_TIME / PHYSICS_STEPS
 
         # ============================================================
-        # MAGNET SETUP
-        # ============================================================
-        magnet_angles_start = []
-        magnet_polarities = []
-        for i in range(NUM_MAGNETS):
-            theta = (math.pi / 2.0) - (i * (2 * math.pi / NUM_MAGNETS))
-            magnet_angles_start.append(theta)
-            magnet_polarities.append(i % 2 == 0)
-
-        # ============================================================
-        # PHYSICS CALCULATION
-        # ============================================================
-        def calculate_flux_at_instant(t: float, coil_angle: float) -> float:
-            angle_delta = -ROTATION_SPEED * t
-            total_flux = 0.0
-            for i, start_angle in enumerate(magnet_angles_start):
-                current_mag_angle = (start_angle + angle_delta) % (2 * PI)
-                dist = get_theta_distance(coil_angle, current_mag_angle)
-                area = get_area_between_circle(dist, MAGNET_PATH_RADIUS, MAGNET_RADIUS)
-                if magnet_polarities[i]:
-                    total_flux += area
-                else:
-                    total_flux -= area
-            return total_flux
-
-        print("TwoPhaseVsSplitPhase: Calculating physics...")
-
-        from scipy.ndimage import gaussian_filter1d
-        import numpy as np
-
-        lookup_steps = 50000
-        flux_lookup = []
-        for i in range(lookup_steps):
-            t_lookup = (i / lookup_steps) * (2 * PI / ROTATION_SPEED)
-            flux = calculate_flux_at_instant(t_lookup, PI / 2.0)
-            flux_lookup.append(flux)
-
-        flux_lookup_smoothed = gaussian_filter1d(flux_lookup, sigma=100, mode='wrap')
-
-        def get_smoothed_flux_at_angle(t, coil_angle):
-            effective_time = t - (PI/2 - coil_angle) / ROTATION_SPEED
-            phase = (effective_time * ROTATION_SPEED) % (2 * PI)
-            fractional_idx = (phase / (2 * PI)) * lookup_steps
-            idx_low = int(fractional_idx) % lookup_steps
-            idx_high = (idx_low + 1) % lookup_steps
-            alpha = fractional_idx - int(fractional_idx)
-            return flux_lookup_smoothed[idx_low] + alpha * (flux_lookup_smoothed[idx_high] - flux_lookup_smoothed[idx_low])
-
-        def calculate_voltage_trace(coil_angle):
-            """Calculate voltage trace for a coil at fixed position."""
-            voltage_trace = []
-            for step in range(PHYSICS_STEPS):
-                t = step * dt
-                if step > 0:
-                    flux_now = get_smoothed_flux_at_angle(t, coil_angle)
-                    flux_prev = get_smoothed_flux_at_angle(t - dt, coil_angle)
-                    voltage = (flux_now - flux_prev) / dt
-                else:
-                    voltage = 0.0
-                voltage_trace.append((t, voltage))
-            return voltage_trace
-
-        # ============================================================
         # COIL CONFIGURATIONS
         # ============================================================
         # Two-phase: coils at 0° and 90° (12 o'clock and 3 o'clock)
@@ -571,17 +256,36 @@ class TwoPhaseVsSplitPhaseScene(Scene):
             {"name": "B", "color": RED, "angle": 180 * DEGREES},     # 6 o'clock
         ]
 
+        # ============================================================
+        # PHYSICS CALCULATION (FINAL Sinusoidal Model)
+        # ============================================================
+        print("TwoPhaseVsSplitPhase: Calculating physics...")
+
         # Calculate voltage traces for each configuration
         two_phase_data = {}
         for coil in two_phase_coils:
             coil_angle = (PI / 2.0) - coil["angle"]
-            two_phase_data[coil["name"]] = calculate_voltage_trace(coil_angle)
+            two_phase_data[coil["name"]] = calculate_sine_voltage_trace(
+                num_magnets=NUM_MAGNETS,
+                rotation_speed=ROTATION_SPEED,
+                total_time=SIMULATION_TIME,
+                coil_angle_static=coil_angle,
+                amplitude=10.0,
+                steps=PHYSICS_STEPS,
+            )
             print(f"  Two-phase coil {coil['name']} at {coil['angle']/DEGREES:.0f}°: done")
 
         split_phase_data = {}
         for coil in split_phase_coils:
             coil_angle = (PI / 2.0) - coil["angle"]
-            split_phase_data[coil["name"]] = calculate_voltage_trace(coil_angle)
+            split_phase_data[coil["name"]] = calculate_sine_voltage_trace(
+                num_magnets=NUM_MAGNETS,
+                rotation_speed=ROTATION_SPEED,
+                total_time=SIMULATION_TIME,
+                coil_angle_static=coil_angle,
+                amplitude=10.0,
+                steps=PHYSICS_STEPS,
+            )
             print(f"  Split-phase coil {coil['name']} at {coil['angle']/DEGREES:.0f}°: done")
 
         # Find max voltage for graph scaling
@@ -592,47 +296,83 @@ class TwoPhaseVsSplitPhaseScene(Scene):
         max_voltage *= 1.1
 
         # ============================================================
+        # HELPER FUNCTION: Build square coil
+        # ============================================================
+        def build_square_coil(coil_angle, coil_color, path_radius, magnet_radius):
+            """Build a square coil at the given angle position."""
+            pos = np.array([
+                path_radius * math.cos(coil_angle),
+                path_radius * math.sin(coil_angle),
+                0
+            ])
+            coil = Rectangle(
+                width=magnet_radius * 1.5,
+                height=magnet_radius * 2.0,
+                color=coil_color,
+                stroke_width=6
+            )
+            # Rotate so long side is tangent to the circle path
+            coil.rotate(coil_angle - PI/2)
+            coil.move_to(pos)
+            return coil
+
+        # ============================================================
         # VISUAL ELEMENTS
         # ============================================================
 
-        # --- GENERATOR (Left side) ---
-        rotor_group = build_rotor(NUM_MAGNETS, MAGNET_PATH_RADIUS, MAGNET_RADIUS, DISK_RADIUS)
+        # --- TWO-PHASE GENERATOR (Top left) ---
+        rotor_group_two = build_rotor(NUM_MAGNETS, MAGNET_PATH_RADIUS, MAGNET_RADIUS, DISK_RADIUS)
 
-        stator = Circle(
+        stator_two = Circle(
             radius=DISK_RADIUS + 0.3,
             color=GRAY,
             stroke_width=8,
             stroke_opacity=0.5
         )
 
-        # --- COILS ON GENERATOR (12 and 3 o'clock for two-phase visualization) ---
-        coil_mobjects = VGroup()
-        coil_labels = VGroup()
+        coil_mobjects_two = VGroup()
+        coil_labels_two = VGroup()
 
-        # We show the two-phase coil positions (12 and 3 o'clock)
         for coil_cfg in two_phase_coils:
             angle = (PI / 2.0) - coil_cfg["angle"]
-
-            pos = np.array([
-                MAGNET_PATH_RADIUS * math.cos(angle),
-                MAGNET_PATH_RADIUS * math.sin(angle),
-                0
-            ])
-
-            coil = DashedVMobject(
-                Circle(radius=MAGNET_RADIUS, color=coil_cfg["color"], stroke_width=6),
-                num_dashes=12
-            ).move_to(pos)
-
+            coil = build_square_coil(angle, coil_cfg["color"], MAGNET_PATH_RADIUS, MAGNET_RADIUS)
             label = Text(coil_cfg["name"], font_size=28, color=coil_cfg["color"]).next_to(coil, UP, buff=0.15)
+            coil_mobjects_two.add(coil)
+            coil_labels_two.add(label)
 
-            coil_mobjects.add(coil)
-            coil_labels.add(label)
+        generator_two_phase = VGroup(stator_two, rotor_group_two, coil_mobjects_two, coil_labels_two)
 
-        generator_group = VGroup(stator, rotor_group, coil_mobjects, coil_labels)
-        generator_group.scale(0.5)
-        generator_group.to_corner(UL, buff=0.5)
-        disk_center = rotor_group.get_center()
+        # --- SPLIT-PHASE GENERATOR (Bottom left) ---
+        rotor_group_split = build_rotor(NUM_MAGNETS, MAGNET_PATH_RADIUS, MAGNET_RADIUS, DISK_RADIUS)
+
+        stator_split = Circle(
+            radius=DISK_RADIUS + 0.3,
+            color=GRAY,
+            stroke_width=8,
+            stroke_opacity=0.5
+        )
+
+        coil_mobjects_split = VGroup()
+        coil_labels_split = VGroup()
+
+        for coil_cfg in split_phase_coils:
+            angle = (PI / 2.0) - coil_cfg["angle"]
+            coil = build_square_coil(angle, coil_cfg["color"], MAGNET_PATH_RADIUS, MAGNET_RADIUS)
+            label = Text(coil_cfg["name"], font_size=28, color=coil_cfg["color"]).next_to(coil, UP, buff=0.15)
+            coil_mobjects_split.add(coil)
+            coil_labels_split.add(label)
+
+        generator_split_phase = VGroup(stator_split, rotor_group_split, coil_mobjects_split, coil_labels_split)
+
+        # Stack generators vertically on the left
+        generators_group = VGroup(generator_two_phase, generator_split_phase)
+        generators_group.arrange(DOWN, buff=0.8)
+        generators_group.scale(0.4)
+        generators_group.to_edge(LEFT, buff=0.4)
+
+        # Get disk centers for rotor updaters (after scaling and positioning)
+        disk_center_two = rotor_group_two.get_center()
+        disk_center_split = rotor_group_split.get_center()
 
         # --- TWO GRAPHS (Right side, stacked) ---
         graph_width = 7.0
@@ -707,25 +447,34 @@ class TwoPhaseVsSplitPhaseScene(Scene):
         curves = VGroup(curve_two_a, curve_two_b, curve_split_a, curve_split_b)
 
         # ============================================================
-        # UPDATER - ONLY FOR ROTOR
+        # UPDATERS - FOR BOTH ROTORS
         # ============================================================
         time_tracker = ValueTracker(0)
-        last_t = [0.0]
+        last_t_two = [0.0]
+        last_t_split = [0.0]
 
-        def update_rotor(mob, dt):
+        def update_rotor_two(mob, dt):
             t_now = time_tracker.get_value()
-            dt_sim = t_now - last_t[0]
+            dt_sim = t_now - last_t_two[0]
             if dt_sim != 0:
-                mob.rotate(-ROTATION_SPEED * dt_sim, about_point=disk_center)
-                last_t[0] = t_now
+                mob.rotate(-ROTATION_SPEED * dt_sim, about_point=disk_center_two)
+                last_t_two[0] = t_now
 
-        rotor_group.add_updater(update_rotor)
+        def update_rotor_split(mob, dt):
+            t_now = time_tracker.get_value()
+            dt_sim = t_now - last_t_split[0]
+            if dt_sim != 0:
+                mob.rotate(-ROTATION_SPEED * dt_sim, about_point=disk_center_split)
+                last_t_split[0] = t_now
+
+        rotor_group_two.add_updater(update_rotor_two)
+        rotor_group_split.add_updater(update_rotor_split)
 
         # ============================================================
         # ANIMATION SEQUENCE
         # ============================================================
 
-        self.add(generator_group, graphs_group, curves)
+        self.add(generators_group, graphs_group, curves)
 
         self.wait(1)
 
@@ -737,3 +486,4 @@ class TwoPhaseVsSplitPhaseScene(Scene):
         )
 
         self.wait(2)
+

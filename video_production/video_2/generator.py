@@ -9,21 +9,217 @@ def get_theta_distance(theta1, theta2):
 
 
 def get_area_between_circle(theta_dist, orbit_radius, r) -> float:
+    """Original circle-overlap model - produces flat-topped waveforms."""
     d = 2 * orbit_radius * math.sin(theta_dist / 2.0)
     if d >= 2 * r:
         return 0
     if d == 0:
         return math.pi * (r**2)
-    
+
     # Clamp to avoid domain error for floating point issues
     arg = d / (2 * r)
     arg = max(-1.0, min(1.0, arg))
-    
+
     term1 = 2 * (r**2) * math.acos(arg)
     val_for_sqrt = 4 * (r**2) - d**2
     val_for_sqrt = max(0, val_for_sqrt)
     term2 = 0.5 * d * math.sqrt(val_for_sqrt)
     return term1 - term2
+
+
+# --- SINUSOIDAL FLUX MODEL (FINAL) ---
+# Produces smooth sine waves based on angular positions
+# Localized field model - magnets only affect nearby coils (matches visual)
+
+def calculate_sinusoidal_flux(magnet_angles, magnet_polarities, coil_angle, amplitude=1.0, influence_width=math.pi/4):
+    """
+    FINAL: Calculate total magnetic flux through a coil using LOCALIZED sinusoidal field model.
+
+    Each magnet only contributes flux when it's within 'influence_width' of the coil.
+    Uses a raised cosine for smooth falloff - produces sine-like voltage curves
+    while matching the visual (no flux when magnet is far from coil).
+
+    influence_width=PI/4 (45°) - tuned to match visual magnet size.
+
+    Args:
+        magnet_angles: List of current magnet angles (radians, 0=right, PI/2=top)
+        magnet_polarities: List of booleans (True=North, False=South)
+        coil_angle: Coil position (radians)
+        amplitude: Field strength multiplier
+        influence_width: Angular half-width of magnet's influence zone (radians)
+
+    Returns:
+        Total flux through the coil
+    """
+    total_flux = 0.0
+    for mag_angle, is_north in zip(magnet_angles, magnet_polarities):
+        # Calculate angular difference, normalized to [-π, π]
+        angle_diff = mag_angle - coil_angle
+        while angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        while angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
+
+        # Only contribute if magnet is within influence zone
+        if abs(angle_diff) >= influence_width:
+            continue
+
+        # Raised cosine: smooth falloff from 1 at center to 0 at edges
+        # This produces sinusoidal-like derivatives (voltage)
+        flux_contribution = amplitude * 0.5 * (1 + math.cos(math.pi * angle_diff / influence_width))
+
+        if is_north:
+            total_flux += flux_contribution
+        else:
+            total_flux -= flux_contribution
+
+    return total_flux
+
+
+def calculate_sine_physics_data(
+    num_magnets=2,
+    rotation_speed=0.5 * math.pi,
+    total_time=8.0,
+    coil_angle=math.pi / 2.0,
+    amplitude=10.0,
+    steps=5000,
+):
+    """
+    Calculate flux and voltage data using sinusoidal field model.
+    Produces smooth sine wave outputs.
+
+    Args:
+        num_magnets: Number of magnets (alternating N/S)
+        rotation_speed: Angular velocity in rad/s (clockwise positive)
+        total_time: Simulation duration in seconds
+        coil_angle: Fixed coil position (radians, PI/2 = top/12 o'clock)
+        amplitude: Peak flux amplitude
+        steps: Number of data points
+
+    Returns:
+        (flux_data, voltage_data) - Lists of (time, value) tuples
+    """
+    dt = total_time / steps
+
+    # Setup initial magnet angles and polarities
+    # Magnets start evenly spaced, first one at top (PI/2)
+    magnet_angles_start = []
+    magnet_polarities = []
+    for i in range(num_magnets):
+        theta = (math.pi / 2.0) - (i * (2 * math.pi / num_magnets))
+        magnet_angles_start.append(theta)
+        magnet_polarities.append(i % 2 == 0)  # Alternating N/S
+
+    flux_data = []
+    voltage_data = []
+
+    for step in range(steps):
+        t = step * dt
+
+        # Rotate magnets clockwise
+        angle_delta = -rotation_speed * t
+        current_magnet_angles = [
+            (start_angle + angle_delta) % (2 * math.pi)
+            for start_angle in magnet_angles_start
+        ]
+
+        # Calculate flux
+        flux = calculate_sinusoidal_flux(
+            current_magnet_angles,
+            magnet_polarities,
+            coil_angle,
+            amplitude
+        )
+        flux_data.append((t, flux))
+
+        # Calculate voltage (V = -dFlux/dt, Lenz's law)
+        # North entering → negative voltage, South entering → positive voltage
+        if step > 0:
+            prev_flux = flux_data[step - 1][1]
+            voltage = -(flux - prev_flux) / dt
+        else:
+            voltage = 0.0
+        voltage_data.append((t, voltage))
+
+    return flux_data, voltage_data
+
+
+def calculate_sine_voltage_trace(
+    num_magnets=2,
+    rotation_speed=0.5 * math.pi,
+    total_time=8.0,
+    coil_angle_func=None,
+    coil_angle_static=math.pi / 2.0,
+    amplitude=10.0,
+    steps=5000,
+    influence_width=math.pi / 4,
+):
+    """
+    Calculate voltage trace for a coil that may move over time.
+
+    Args:
+        num_magnets: Number of magnets (alternating N/S)
+        rotation_speed: Angular velocity in rad/s
+        total_time: Simulation duration
+        coil_angle_func: Optional function(t) -> coil_angle for moving coils
+        coil_angle_static: Static coil angle if coil_angle_func is None
+        amplitude: Peak flux amplitude
+        steps: Number of data points
+        influence_width: Angular half-width of magnet influence zone (radians)
+                        Should be calculated as: 2 * MAGNET_RADIUS / MAGNET_PATH_RADIUS
+
+    Returns:
+        List of (time, voltage) tuples
+    """
+    dt = total_time / steps
+
+    # Setup magnets
+    magnet_angles_start = []
+    magnet_polarities = []
+    for i in range(num_magnets):
+        theta = (math.pi / 2.0) - (i * (2 * math.pi / num_magnets))
+        magnet_angles_start.append(theta)
+        magnet_polarities.append(i % 2 == 0)
+
+    voltage_trace = []
+    prev_flux = None
+
+    for step in range(steps):
+        t = step * dt
+
+        # Get coil angle (may be time-varying)
+        if coil_angle_func is not None:
+            coil_angle = coil_angle_func(t)
+        else:
+            coil_angle = coil_angle_static
+
+        # Rotate magnets
+        angle_delta = -rotation_speed * t
+        current_magnet_angles = [
+            (start_angle + angle_delta) % (2 * math.pi)
+            for start_angle in magnet_angles_start
+        ]
+
+        # Calculate flux
+        flux = calculate_sinusoidal_flux(
+            current_magnet_angles,
+            magnet_polarities,
+            coil_angle,
+            amplitude,
+            influence_width
+        )
+
+        # Calculate voltage (V = -dΦ/dt, Lenz's law)
+        # North entering → negative voltage, South entering → positive voltage
+        if prev_flux is not None:
+            voltage = -(flux - prev_flux) / dt
+        else:
+            voltage = 0.0
+
+        voltage_trace.append((t, voltage))
+        prev_flux = flux
+
+    return voltage_trace
 
 
 def check_valid_constants(
@@ -151,9 +347,13 @@ def build_coils(num_coils, magnet_path_radius, magnet_radius):
         x = magnet_path_radius * math.cos(coil_angle)
         y = magnet_path_radius * math.sin(coil_angle)
 
-        # Using DashedVMobject for the coil look as per reference style
-        base_circle = Circle(radius=magnet_radius, color=ORANGE, stroke_width=6)
-        coil = DashedVMobject(base_circle, num_dashes=12)
+        # Square coil as per reference style from scene_linear_to_circular.py
+        coil = Rectangle(
+            width=magnet_radius * 1.5,
+            height=magnet_radius * 2.0,
+            color=ORANGE,
+            stroke_width=6
+        )
 
         coil.move_to(np.array([x, y, 0]))
         coils.add(coil)
