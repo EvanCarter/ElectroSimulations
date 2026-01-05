@@ -75,6 +75,34 @@ The `manim.cfg` sets `media_dir = ./video_2_media`, so running from this directo
 
 **Do NOT run from the repo root** - that outputs to a different `media/` folder.
 
+## Positioning System (CRITICAL)
+
+**USE THE LAYOUT SYSTEM** for all positioning. Do NOT use raw coordinates or magic numbers.
+
+```python
+from layout import Layout, REGIONS, position_stacked_graphs
+
+# Named regions instead of coordinates
+generator_group.move_to(REGIONS["left_panel"])   # (-4, 0)
+graph.move_to(REGIONS["graph"])                   # (3, 0)
+
+# Safe shift (auto-clamps to screen)
+Layout.safe_shift(graph, DOWN * 2)
+
+# Validate positioning (debug)
+Layout.validate(graph, "voltage_graph")  # Raises if off-screen
+```
+
+**Key Regions:**
+- `left_panel` / `generator`: Generator visuals
+- `graph`, `graph_upper`, `graph_lower`: Voltage graphs
+- `top_center`: Titles
+- `bottom_right`, `top_left`: Corner labels
+
+**Screen bounds:** x ∈ [-7, 7], y ∈ [-4, 4]
+
+See `layout.py` for all regions and helpers.
+
 ## Animation Principles
 
 ### Scene Organization

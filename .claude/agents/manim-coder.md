@@ -94,15 +94,58 @@ NUM_MAGNETS = 2
 rotor_group = build_rotor(NUM_MAGNETS, MAGNET_PATH_RADIUS, MAGNET_RADIUS, DISK_RADIUS)
 ```
 
+### POSITIONING - USE LAYOUT SYSTEM (CRITICAL)
+
+**NEVER use raw coordinates or `.shift()` with magic numbers.**
+
+Always import and use the layout system:
+```python
+from layout import Layout, REGIONS, position_stacked_graphs
+
+# Position by named region (NOT raw coordinates)
+generator_group.move_to(REGIONS["left_panel"])
+graph.move_to(REGIONS["graph"])
+
+# Safe shift (clamped to screen bounds)
+Layout.safe_shift(graph, DOWN * 1.5)
+
+# Natural language positioning
+pos = Layout.parse_position("bottom right")
+label.move_to(pos)
+
+# Stack multiple graphs
+position_stacked_graphs([axes_a, axes_b, axes_c], "right_panel")
+
+# Validate (debug - raises if off screen)
+Layout.validate(graph, "voltage_graph")
+```
+
+**Available Regions:**
+| Region | Position | Use for |
+|--------|----------|---------|
+| `left_panel` | (-4, 0) | Generator |
+| `right_panel` | (3.5, 0) | Graphs |
+| `graph` | (3, 0) | Main graph |
+| `graph_upper` | (3, 1.5) | Upper of 2 graphs |
+| `graph_lower` | (3, -1.5) | Lower of 2 graphs |
+| `top_left` | (-4, 2) | Corner content |
+| `bottom_right` | (4, -2) | Corner content |
+| `top_center` | (0, 3.2) | Titles |
+
+**Screen bounds:** x=[-7, 7], y=[-4, 4]. Margin=0.5.
+
 ### Graph Setup
 ```python
+from layout import Layout, REGIONS
+
 voltage_ax = Axes(
     x_range=[0, SIMULATION_TIME, 1],
     y_range=[-max_voltage, max_voltage, max_voltage / 2],
-    x_length=6,
-    y_length=4.5,
+    x_length=5,  # Slightly smaller to fit safely
+    y_length=2.5,
     axis_config={"include_tip": False, "color": GREY},
-).to_edge(RIGHT, buff=0.5)
+)
+voltage_ax.move_to(REGIONS["graph"])  # USE NAMED REGION
 ```
 
 ## Workflow
